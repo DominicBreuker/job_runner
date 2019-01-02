@@ -2,7 +2,7 @@
 
 
 [[projects]]
-  digest = "1:63780467bea172e2138eed75142dade9c606a6a2e89e4dbad6d324a5ba7f7a45"
+  digest = "1:1eb2cca2cafbf292367cfe36d27ce03c52cfa42113a6947aeee1ae77693c284d"
   name = "github.com/aws/aws-sdk-go"
   packages = [
     "aws",
@@ -38,6 +38,8 @@
     "private/protocol/xml/xmlutil",
     "service/dynamodb",
     "service/dynamodb/dynamodbiface",
+    "service/sns",
+    "service/sns/snsiface",
     "service/sts",
   ]
   pruneopts = "UT"
@@ -200,6 +202,8 @@
     "github.com/aws/aws-sdk-go/aws/session",
     "github.com/aws/aws-sdk-go/service/dynamodb",
     "github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface",
+    "github.com/aws/aws-sdk-go/service/sns",
+    "github.com/aws/aws-sdk-go/service/sns/snsiface",
     "github.com/spf13/cobra",
     "github.com/spf13/viper",
   ]
