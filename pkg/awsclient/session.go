@@ -18,6 +18,10 @@ func InitializeSession(region string) {
 	sess = session.Must(session.NewSession(conf))
 }
 
+func GetSession() *session.Session {
+	return sess
+}
+
 func GetDynamoDB() dynamodbiface.DynamoDBAPI {
 	svc := dynamodb.New(sess)
 
