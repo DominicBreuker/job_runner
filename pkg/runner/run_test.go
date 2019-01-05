@@ -1,8 +1,8 @@
 package runner
 
 import (
-	"bytes"
-	"io/ioutil"
+	"bufio"
+	"io"
 	"strings"
 	"testing"
 
@@ -58,20 +58,40 @@ func TestRun(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		logsBuf := bytes.NewBuffer(make([]byte, 8096))
+		var logs []string
 
-		log = zerolog.New(logsBuf)
+		r, w := io.Pipe()
+		done := make(chan struct{})
+		go func() {
+			scanner := bufio.NewScanner(r)
+			for scanner.Scan() {
+				logs = append(logs, scanner.Text())
+			}
+			if err := scanner.Err(); err != nil {
+				t.Fatalf("Error getting test logs: %v", err)
+			}
+			done <- struct{}{}
+		}()
+
+		logBKP := log
+		log = zerolog.New(w)
+		defer func() { log = logBKP }()
+
+		snsAPIBKP := snsAPI
 		snsAPI = func() snsiface.SNSAPI { return mockSNSClient{} }
-		waitTime = 0
+		defer func() { snsAPI = snsAPIBKP }()
 
 		err := Run(&tt.runInput)
 		if (err != nil) != tt.err {
-			t.Errorf("Unexpected error result for %s: got err=%t but want err=%t | err=%v", tt.runInput.JobName, (err != nil), tt.err, err)
+			t.Errorf("Unexpected error result for %s: got err=%t but want err=%t | err=%v",
+				tt.runInput.JobName, (err != nil), tt.err, err)
 		}
+		w.Close()
+		<-done // wait for logs to be read completely
 
-		logs, _ := ioutil.ReadAll(logsBuf)
-		if !strings.Contains(string(logs), tt.logs) {
-			t.Errorf("Unexpected logs for job %s: wanted string '%s' inside logs but did not find. Logs =\n%s\n", tt.runInput.JobName, tt.logs, logs)
+		if !strings.Contains(strings.Join(logs, "\n"), tt.logs) {
+			t.Errorf("Unexpected logs for job %s: wanted string '%s' inside logs but did not find. Logs =\n%s\n",
+				tt.runInput.JobName, tt.logs, logs)
 		}
 	}
 }

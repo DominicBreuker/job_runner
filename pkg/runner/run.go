@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/dominicbreuker/job_runner/pkg/awsclient"
 	"github.com/dominicbreuker/job_runner/pkg/awsclient/sns"
@@ -17,7 +16,6 @@ import (
 
 var log = zlog.With().Logger()
 var snsAPI = awsclient.GetSNS
-var waitTime = 500 * time.Millisecond
 
 type RunInput struct {
 	JobName string
@@ -47,15 +45,13 @@ func Run(cfg *RunInput) error {
 func execute(cmd string, log *zerolog.Logger) (int, error) {
 	command := exec.Command("/bin/sh", "-c", cmd)
 
-	stdout, err := command.StdoutPipe()
-	if err != nil {
-		return -1, fmt.Errorf("attaching pipe to stdout: %v", err)
-	}
+	stdoutR, stdoutW := io.Pipe()
+	command.Stdout = stdoutW
+	defer stdoutW.Close()
 
-	stderr, err := command.StderrPipe()
-	if err != nil {
-		return -1, fmt.Errorf("attaching pipe to stderr: %v", err)
-	}
+	stderrR, stderrW := io.Pipe()
+	command.Stderr = stderrW
+	defer stderrW.Close()
 
 	if err := command.Start(); err != nil {
 		return -1, fmt.Errorf("starting command %s: %v", cmd, err)
@@ -63,14 +59,13 @@ func execute(cmd string, log *zerolog.Logger) (int, error) {
 
 	wg := sync.WaitGroup{}
 
-	stdoutLog := log.With().Str("fd", "stdout").Logger()
-	go logOutput(stdout, &stdoutLog, &wg)
+	stdoutLogger := log.With().Str("fd", "stdout").Logger()
+	go logOutput(stdoutR, &stdoutLogger, &wg)
 
-	stderrLog := log.With().Str("fd", "stderr").Logger()
-	go logOutput(stderr, &stderrLog, &wg)
+	stderrLogger := log.With().Str("fd", "stderr").Logger()
+	go logOutput(stderrR, &stderrLogger, &wg)
 
 	wg.Wait()
-	time.Sleep(waitTime) // TODO: find out why we get 'file already closed' without...
 
 	if err := command.Wait(); err != nil {
 		if exitError, ok := err.(*exec.ExitError); ok {
@@ -86,24 +81,14 @@ func execute(cmd string, log *zerolog.Logger) (int, error) {
 func logOutput(r io.Reader, log *zerolog.Logger, wg *sync.WaitGroup) {
 	wg.Add(1)
 	defer wg.Done()
-	reader := bufio.NewReaderSize(r, 65536)
 
-	for {
-		line, isPrefix, err := reader.ReadLine()
-		if err != nil {
-			if err == io.EOF {
-				return
-			}
+	scanner := bufio.NewScanner(r)
 
-			log.Error().Err(err).Msg("Error reading shell output from job runner")
-			return
-		}
-
-		if isPrefix {
-			line = append(line, byte('.'), byte('.'), byte('.'))
-		}
-
-		log.Info().Msg(string(line))
+	for scanner.Scan() {
+		log.Info().Msg(scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		log.Error().Err(err).Msg("Error reading shell output from job runner")
 	}
 }
 
