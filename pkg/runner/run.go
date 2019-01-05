@@ -17,6 +17,7 @@ import (
 
 var log = zlog.With().Logger()
 var snsAPI = awsclient.GetSNS
+var waitTime = 500 * time.Millisecond
 
 type RunInput struct {
 	JobName string
@@ -69,7 +70,7 @@ func execute(cmd string, log *zerolog.Logger) (int, error) {
 	go logOutput(stderr, &stderrLog, &wg)
 
 	wg.Wait()
-	time.Sleep(500 * time.Millisecond) // TODO: find out why we get 'file already closed' without...
+	time.Sleep(waitTime) // TODO: find out why we get 'file already closed' without...
 
 	if err := command.Wait(); err != nil {
 		if exitError, ok := err.(*exec.ExitError); ok {

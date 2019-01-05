@@ -62,6 +62,7 @@ func TestRun(t *testing.T) {
 
 		log = zerolog.New(logsBuf)
 		snsAPI = func() snsiface.SNSAPI { return mockSNSClient{} }
+		waitTime = 0
 
 		err := Run(&tt.runInput)
 		if (err != nil) != tt.err {
