@@ -2,6 +2,7 @@ package runner
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -78,7 +79,8 @@ func TestRun(t *testing.T) {
 		defer func() { log = logBKP }()
 
 		snsAPIBKP := snsAPI
-		snsAPI = func() snsiface.SNSAPI { return mockSNSClient{} }
+		mockSNSClient := mockSNSClient{}
+		snsAPI = func() snsiface.SNSAPI { return mockSNSClient }
 		defer func() { snsAPI = snsAPIBKP }()
 
 		err := Run(&tt.runInput)
@@ -97,10 +99,21 @@ func TestRun(t *testing.T) {
 }
 
 type mockSNSClient struct {
+	messages []mockSNSMessage
 	snsiface.SNSAPI
 }
 
+type mockSNSMessage struct {
+	subject string
+	message string
+}
+
 func (svc mockSNSClient) Publish(req *sns.PublishInput) (*sns.PublishOutput, error) {
+	fmt.Println("PUBLISH")
+	svc.messages = append(svc.messages, mockSNSMessage{
+		subject: *req.Subject,
+		message: *req.Message,
+	})
 	resp := &sns.PublishOutput{}
 	return resp, nil
 }
