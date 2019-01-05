@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/dominicbreuker/job_runner/pkg/config"
+	_ "github.com/dominicbreuker/job_runner/pkg/initialize"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

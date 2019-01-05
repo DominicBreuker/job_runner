@@ -1,8 +1,9 @@
 package cmd
 
 import (
-	"fmt"
-
+	"github.com/dominicbreuker/hackcli/pkg/initialize"
+	"github.com/dominicbreuker/job_runner/pkg/runner"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -17,7 +18,17 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("run called")
+		initialize.All()
+		log.Info().Msg("Initialization complete")
+
+		cfg := &runner.RunInput{
+			JobName: "myjob",
+			CMD:     "/bin/sh -c './test.sh'",
+		}
+		if err := runner.Run(cfg); err != nil {
+			log.Fatal().Err(err).Msg("Error executing job")
+		}
+		log.Info().Msg("Execution successful")
 	},
 }
 

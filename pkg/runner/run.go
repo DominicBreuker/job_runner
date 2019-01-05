@@ -5,28 +5,32 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"sync"
 	"syscall"
+	"time"
 
+	"github.com/dominicbreuker/job_runner/pkg/awsclient"
 	"github.com/dominicbreuker/job_runner/pkg/awsclient/sns"
 	"github.com/rs/zerolog"
 	zlog "github.com/rs/zerolog/log"
 )
 
 var log = zlog.With().Logger()
+var snsAPI = awsclient.GetSNS
 
 type RunInput struct {
-	jobName string
-	cmd     string
+	JobName string
+	CMD     string
 
-	successTopic string // SNS topic for success notifications
-	errorTopic   string // SNS topic for error notifications
-	historyTable string // DynamoDB table for job history
+	SuccessTopic string // SNS topic for success notifications
+	ErrorTopic   string // SNS topic for error notifications
+	HistoryTable string // DynamoDB table for job history
 }
 
 func Run(cfg *RunInput) error {
-	log = log.With().Str("cmd", cfg.cmd).Str("job", cfg.jobName).Logger()
+	log = log.With().Str("cmd", cfg.CMD).Str("job", cfg.JobName).Logger()
 
-	waitStatus, err := execute(cfg.cmd, &log)
+	waitStatus, err := execute(cfg.CMD, &log)
 	if err != nil {
 		return fmt.Errorf("executing command: %v", err)
 	}
@@ -56,11 +60,16 @@ func execute(cmd string, log *zerolog.Logger) (int, error) {
 		return -1, fmt.Errorf("starting command %s: %v", cmd, err)
 	}
 
+	wg := sync.WaitGroup{}
+
 	stdoutLog := log.With().Str("fd", "stdout").Logger()
-	go logOutput(stdout, &stdoutLog)
+	go logOutput(stdout, &stdoutLog, &wg)
 
 	stderrLog := log.With().Str("fd", "stderr").Logger()
-	go logOutput(stderr, &stderrLog)
+	go logOutput(stderr, &stderrLog, &wg)
+
+	wg.Wait()
+	time.Sleep(500 * time.Millisecond) // TODO: find out why we get 'file already closed' without...
 
 	if err := command.Wait(); err != nil {
 		if exitError, ok := err.(*exec.ExitError); ok {
@@ -73,30 +82,39 @@ func execute(cmd string, log *zerolog.Logger) (int, error) {
 	return 0, nil
 }
 
-func logOutput(r io.Reader, log *zerolog.Logger) {
+func logOutput(r io.Reader, log *zerolog.Logger, wg *sync.WaitGroup) {
+	wg.Add(1)
+	defer wg.Done()
 	reader := bufio.NewReaderSize(r, 65536)
 
-	line, isPrefix, err := reader.ReadLine()
-	if err != nil {
-		log.Error().Err(err).Msg("Error reading shell output from job runner")
-		return
-	}
-	if isPrefix {
-		line = append(line, byte('.'), byte('.'), byte('.'))
-	}
+	for {
+		line, isPrefix, err := reader.ReadLine()
+		if err != nil {
+			if err == io.EOF {
+				return
+			}
 
-	log.Info().Msg(string(line))
+			log.Error().Err(err).Msg("Error reading shell output from job runner")
+			return
+		}
+
+		if isPrefix {
+			line = append(line, byte('.'), byte('.'), byte('.'))
+		}
+
+		log.Info().Msg(string(line))
+	}
 }
 
 func publishFinalStatus(success bool, cfg *RunInput) error {
-	subject := fmt.Sprintf("Job '%s': success = %t", cfg.jobName, success)
+	subject := fmt.Sprintf("Job '%s': success = %t", cfg.JobName, success)
 	message := "..."
-	topic := cfg.successTopic
+	topic := cfg.SuccessTopic
 	if !success {
-		topic = cfg.errorTopic
+		topic = cfg.ErrorTopic
 	}
 
-	if err := sns.Publish(subject, message, topic); err != nil {
+	if err := sns.GetClient(snsAPI()).Publish(subject, message, topic); err != nil {
 		return fmt.Errorf("publishing final status notification: %v", err)
 	}
 
