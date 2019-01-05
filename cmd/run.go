@@ -2,10 +2,15 @@ package cmd
 
 import (
 	"github.com/dominicbreuker/hackcli/pkg/initialize"
+	"github.com/dominicbreuker/job_runner/pkg/config"
 	"github.com/dominicbreuker/job_runner/pkg/runner"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
+
+var jobName string
+var command string
 
 // startCmd represents the start command
 var runCmd = &cobra.Command{
@@ -22,8 +27,8 @@ to quickly create a Cobra application.`,
 		log.Info().Msg("Initialization complete")
 
 		cfg := &runner.RunInput{
-			JobName: "myjob",
-			CMD:     "/bin/sh -c './test.sh'",
+			JobName: jobName,
+			CMD:     command,
 		}
 		if err := runner.Run(cfg); err != nil {
 			log.Fatal().Err(err).Msg("Error executing job")
@@ -34,4 +39,10 @@ to quickly create a Cobra application.`,
 
 func init() {
 	rootCmd.AddCommand(runCmd)
+
+	runCmd.PersistentFlags().StringVarP(&jobName, config.RunJobName, "j", "", "Name of the job to be run")
+	viper.BindPFlag(config.RunJobName, runCmd.PersistentFlags().Lookup(config.RunJobName))
+
+	runCmd.PersistentFlags().StringVarP(&command, config.RunCMD, "c", "", "Command to execute as a job")
+	viper.BindPFlag(config.RunCMD, runCmd.PersistentFlags().Lookup(config.RunCMD))
 }
